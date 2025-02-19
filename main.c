@@ -112,12 +112,12 @@ void button_callback(uint gpio, uint32_t events) {
 // Leitura do joystick e atualização do PWM dos LEDs RGB
 void update_leds() {
     adc_select_input(0);
-    uint16_t adc_x = adc_read();
-    adc_select_input(1);
     uint16_t adc_y = adc_read();
+    adc_select_input(1);
+    uint16_t adc_x = adc_read();
 
-    int16_t deslocamento_x = adc_x - 2048;
     int16_t deslocamento_y = adc_y - 2048;
+    int16_t deslocamento_x = adc_x - 2048;
 
     uint16_t pwm_red = 0;
     uint16_t pwm_blue = 0;
@@ -149,15 +149,24 @@ void update_display() {
     ssd1306_fill(&ssd, false);
 
     if (border_style) {
-        ssd1306_rect(&ssd, 0, 0, 127, 63, true, false);
-        ssd1306_rect(&ssd, 1, 1, 126, 62, true, false);
+        // **Borda pontilhada**
+        for (int i = 0; i < 128; i += 4) { // Pontos na borda superior e inferior
+            ssd1306_pixel(&ssd, i, 0, true);
+            ssd1306_pixel(&ssd, i, 63, true);
+        }
+        for (int i = 0; i < 64; i += 4) { // Pontos nas laterais esquerda e direita
+            ssd1306_pixel(&ssd, 0, i, true);
+            ssd1306_pixel(&ssd, 127, i, true);
+        }
     } else {
+        // **Borda de linha contínua**
         ssd1306_rect(&ssd, 0, 0, 127, 63, true, false);
     }
 
     ssd1306_rect(&ssd, pos_x, pos_y, 8, 8, true, true);
     ssd1306_send_data(&ssd);
 }
+
 
 int main() {
     stdio_init_all();
