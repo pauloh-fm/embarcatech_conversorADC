@@ -15,9 +15,9 @@
 #define OLED_ADDR 0x3C
 
 // Definições do joystick
-#define JOYSTICK_X_PIN 26  // GPIO para eixo X
-#define JOYSTICK_Y_PIN 27  // GPIO para eixo Y
-#define JOYSTICK_PB 22     // GPIO para botão do joystick
+#define JOYSTICK_X_PIN 26 // GPIO para eixo X
+#define JOYSTICK_Y_PIN 27 // GPIO para eixo Y
+#define JOYSTICK_PB 22    // GPIO para botão do joystick
 
 // Definições do LED RGB (PWM)
 #define LED_RED 13
@@ -33,9 +33,12 @@
 
 // Estrutura do display
 ssd1306_t ssd;
-volatile bool leds_enabled = true;  // Estado dos LEDs
-volatile bool border_style = false; // Estilo da borda do display
+volatile bool leds_enabled = true;     // Estado dos LEDs
+volatile bool border_style = false;    // Estilo da borda do display
 volatile bool led_green_state = false; // Estado do LED verde
+
+// ZONA MORTA para evitar pequenas variações no centro do joystick
+#define DEAD_ZONE 100  // Definir a zona morta em torno do centro (2048)
 
 // Debounce - Tempo mínimo entre pressionamentos (200ms)
 #define DEBOUNCE_TIME 200
@@ -43,7 +46,8 @@ uint32_t last_press_time_pb = 0;
 uint32_t last_press_time_a = 0;
 
 // Configuração do PWM para LEDs
-void pwm_setup(uint gpio) {
+void pwm_setup(uint gpio)
+{
     gpio_set_function(gpio, GPIO_FUNC_PWM);
     uint slice = pwm_gpio_to_slice_num(gpio);
     pwm_set_clkdiv(slice, PWM_DIV);
@@ -53,14 +57,16 @@ void pwm_setup(uint gpio) {
 }
 
 // Configuração do ADC
-void adc_setup() {
+void adc_setup()
+{
     adc_init();
     adc_gpio_init(JOYSTICK_X_PIN);
     adc_gpio_init(JOYSTICK_Y_PIN);
 }
 
 // Configuração do display OLED
-void oled_setup() {
+void oled_setup()
+{
     i2c_init(I2C_PORT, 400 * 1000);
     gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);
     gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);
@@ -73,9 +79,11 @@ void oled_setup() {
 }
 
 // Implementação do debounce para botões
-bool button_debounce(uint32_t *last_press_time) {
+bool button_debounce(uint32_t *last_press_time)
+{
     uint32_t current_time = to_ms_since_boot(get_absolute_time());
-    if (current_time - *last_press_time > DEBOUNCE_TIME) {
+    if (current_time - *last_press_time > DEBOUNCE_TIME)
+    {
         *last_press_time = current_time;
         return true;
     }
@@ -83,8 +91,10 @@ bool button_debounce(uint32_t *last_press_time) {
 }
 
 // Interrupção para o botão do joystick (alterna LED verde e altera borda)
-void joystick_button_callback(uint gpio, uint32_t events) {
-    if (button_debounce(&last_press_time_pb)) {
+void joystick_button_callback(uint gpio, uint32_t events)
+{
+    if (button_debounce(&last_press_time_pb))
+    {
         led_green_state = !led_green_state;
         gpio_put(LED_GREEN, led_green_state);
         border_style = !border_style;
@@ -93,15 +103,18 @@ void joystick_button_callback(uint gpio, uint32_t events) {
 }
 
 // Interrupção para o botão A (ativa/desativa os LEDs)
-void button_a_callback(uint gpio, uint32_t events) {
-    if (button_debounce(&last_press_time_a)) {
+void button_a_callback(uint gpio, uint32_t events)
+{
+    if (button_debounce(&last_press_time_a))
+    {
         leds_enabled = !leds_enabled;
         printf("Botão A pressionado! LEDs: %s\n", leds_enabled ? "Ligados" : "Desligados");
     }
 }
 
 // Leitura do joystick e atualização do PWM dos LEDs RGB
-void update_leds() {
+void update_leds()
+{
     adc_select_input(0);
     uint16_t adc_x = adc_read();
     adc_select_input(1);
@@ -114,10 +127,11 @@ void update_leds() {
     uint16_t pwm_red = 0;
     uint16_t pwm_blue = 0;
 
-    if (leds_enabled) {
-        // LEDs só acendem se o joystick sair do centro
-        pwm_red = abs(deslocamento_x) > 100 ? abs(deslocamento_x) : 0;  // LED Vermelho (X)
-        pwm_blue = abs(deslocamento_y) > 100 ? abs(deslocamento_y) : 0; // LED Azul (Y)
+    if (leds_enabled)
+    {
+        // Aplica zona morta para evitar ativação acidental dos LEDs
+        pwm_red = (abs(deslocamento_x) > DEAD_ZONE) ? abs(deslocamento_x) : 0;  // LED Vermelho (X)
+        pwm_blue = (abs(deslocamento_y) > DEAD_ZONE) ? abs(deslocamento_y) : 0; // LED Azul (Y)
     }
 
     pwm_set_gpio_level(LED_RED, pwm_red);
@@ -128,28 +142,42 @@ void update_leds() {
 }
 
 // Atualização do display OLED com o quadrado móvel
-void update_display() {
+void update_display()
+{
     adc_select_input(0);
     uint16_t adc_x = adc_read();
     adc_select_input(1);
     uint16_t adc_y = adc_read();
 
-    // Corrigindo a inversão dos eixos do joystick no display
-    uint8_t pos_x = (adc_y * 120) / 4095; // Agora o eixo Y controla a vertical corretamente
-    uint8_t pos_y = 56 - ((adc_x * 56) / 4095);  // Agora o eixo X controla a horizontal corretamente
+   
+    uint8_t pos_y = (adc_y * 120) / 4095; 
+    uint8_t pos_x = (adc_x * 56) / 4095;
+
+    // Aplica zona morta no movimento do quadrado
+    if (abs(adc_y - 2048) < DEAD_ZONE)
+        pos_y = 60; // Mantém no centro
+    if (abs(adc_x - 2048) < DEAD_ZONE)
+        pos_x = 28; // Mantém no centro
+
+    // **IMPRIME VALORES PARA DEBUG**
+    printf("ADC X: %d, ADC Y: %d -> Pos X: %d, Pos Y: %d\n", adc_x, adc_y, pos_x, pos_y);
 
     // Atualiza o display
     ssd1306_fill(&ssd, false);
-    if (border_style) {
+    if (border_style)
+    {
         ssd1306_rect(&ssd, 0, 0, 127, 63, true, false); // Estilo 1
-    } else {
+    }
+    else
+    {
         ssd1306_rect(&ssd, 2, 2, 124, 60, true, false); // Estilo 2
     }
     ssd1306_rect(&ssd, pos_x, pos_y, 8, 8, true, true); // Quadrado móvel corrigido
     ssd1306_send_data(&ssd);
 }
 
-int main() {
+int main()
+{
     stdio_init_all();
 
     // Configuração de hardware
@@ -171,7 +199,8 @@ int main() {
     gpio_pull_up(BUTTON_A);
     gpio_set_irq_enabled_with_callback(BUTTON_A, GPIO_IRQ_EDGE_FALL, true, &button_a_callback);
 
-    while (true) {
+    while (true)
+    {
         update_leds();
         update_display();
         sleep_ms(50);
