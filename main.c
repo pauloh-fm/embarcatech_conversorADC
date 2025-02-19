@@ -139,7 +139,7 @@ void update_display() {
     uint16_t adc_y = adc_read();
 
     uint8_t pos_y = (adc_y * 120) / 4095; 
-    uint8_t pos_x = (adc_x * 56) / 4095;
+    uint8_t pos_x = 56 - (adc_x * 56) / 4095;
 
     if (abs(adc_y - 2048) < DEAD_ZONE) pos_y = 60;
     if (abs(adc_x - 2048) < DEAD_ZONE) pos_x = 28;
